@@ -28,6 +28,23 @@ CATEGORY_RULES: dict[str, list[str]] = {
     "Transport": ["uber", "ola cabs", "rapido", "indianoil", "petrol", "irctc", "metro"],
     "Shopping": ["amazon pay", "flipkart", "myntra", "ajio", "nykaa"],
     "Income": ["salary", "refund", "cashback", "interest credit", "dividend"],
+    # Deliberately last. Money moved between your own accounts is not
+    # spending, and `analyze.spending_only` drops this category so it is not
+    # counted twice. The keywords must stay narrow and must sit below Income:
+    # "IMPS-CASHBACK CREDIT" and "NEFT-...-SALARY CREDIT" both look like
+    # transfers by prefix, and matching them here would misfile real income.
+    "Transfer": [
+        # Not "...transfer": real exports truncate the narration mid-word, so
+        # the most common row in the 116k-row bank dataset literally reads
+        # "FDRL/INTERNAL FUND TRANSFE". Matching the truncated stem catches
+        # both forms.
+        "internal fund transfe",
+        "trf to",
+        "trf from",
+        "rtgs",
+        "real time gross settl",
+        "self transfer",
+    ],
 }
 
 

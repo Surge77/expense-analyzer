@@ -14,6 +14,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import pandas as pd
+from matplotlib.figure import Figure
 
 from . import analyze
 
@@ -21,7 +22,7 @@ DPI = 150
 FIGSIZE = (9, 5)
 
 
-def _finish(fig: plt.Figure, path: Path) -> Path:
+def _finish(fig: Figure, path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
     fig.savefig(path, dpi=DPI)
@@ -34,10 +35,13 @@ def plot_by_category(spend: pd.DataFrame, out_dir: Path) -> Path:
     totals = analyze.by_category(spend).sort_values()
 
     fig, axis = plt.subplots(figsize=FIGSIZE)
-    axis.barh(totals.index, totals.values)
+    # `.to_numpy()` rather than `.values`: the latter is typed as a union
+    # including ExtensionArray, which matplotlib does not accept.
+    heights = totals.to_numpy()
+    axis.barh(totals.index, heights)
     axis.set_xlabel("Rupees spent")
     axis.set_title("Spend by category")
-    for index, value in enumerate(totals.values):
+    for index, value in enumerate(heights):
         axis.text(value, index, f" {value:,.0f}", va="center", fontsize=9)
 
     return _finish(fig, out_dir / "01_spend_by_category.png")
@@ -48,7 +52,7 @@ def plot_monthly_total(spend: pd.DataFrame, out_dir: Path) -> Path:
     totals = analyze.monthly_totals(spend)
 
     fig, axis = plt.subplots(figsize=FIGSIZE)
-    axis.plot(totals.index.astype(str), totals.values, marker="o")
+    axis.plot(totals.index.astype(str), totals.to_numpy(), marker="o")
     axis.set_ylabel("Rupees spent")
     axis.set_title("Total spend per month")
     axis.grid(alpha=0.3)

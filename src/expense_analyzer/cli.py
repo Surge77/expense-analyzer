@@ -1,6 +1,9 @@
 """Run the whole pipeline and print the numbers you build findings from.
 
     python -m expense_analyzer
+    python -m expense_analyzer --list-sources
+    python -m expense_analyzer --source household
+    python -m expense_analyzer --source bank --account 1196428
     python -m expense_analyzer --statement data/my_statement.csv
 """
 
@@ -10,7 +13,8 @@ from pathlib import Path
 import pandas as pd
 
 from . import analyze, categorize, plots
-from .clean import load_and_clean
+from .clean import clean_statement
+from .data import SOURCES, describe_sources, load_raw
 
 # Resolved against the working directory, not against the package location.
 # Once installed the package sits in site-packages, which has no `data/`
@@ -20,12 +24,36 @@ DEFAULT_REPORTS = Path("reports")
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--source",
+        choices=sorted(SOURCES),
+        default="sample",
+        help="Which dataset to read. Remote sources download on first use.",
+    )
+    parser.add_argument(
+        "--list-sources",
+        action="store_true",
+        help="Describe each available source and exit.",
+    )
+    parser.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="Score the rules and the classifier on the labelled benchmark, then exit.",
+    )
+    parser.add_argument(
+        "--account",
+        default=None,
+        help="Narrow a multi-account export to one account before analysing.",
+    )
     parser.add_argument(
         "--statement",
         type=Path,
-        default=DEFAULT_STATEMENT,
-        help="Path to a bank statement CSV in HDFC export format.",
+        default=None,
+        help="Read this file instead of the source's default location.",
     )
     parser.add_argument(
         "--reports",
@@ -46,18 +74,79 @@ def section(title: str) -> None:
     print(f"\n{title}\n{'-' * len(title)}")
 
 
+def load_frame(args: argparse.Namespace) -> pd.DataFrame:
+    """Read the chosen source and return a categorized frame.
+
+    Kept apart from `main` so the loading rules — which source, which file,
+    which account — can be read without wading through the printing.
+    """
+    path = args.statement
+    if path is None and args.source == "sample":
+        path = DEFAULT_STATEMENT
+
+    if path is not None and not path.exists():
+        raise SystemExit(
+            f"No statement at {path}\nGenerate the sample first:  python scripts/make_sample.py"
+        )
+
+    try:
+        raw, schema = load_raw(args.source, path)
+    except (RuntimeError, FileNotFoundError) as error:
+        raise SystemExit(str(error)) from error
+
+    frame = clean_statement(raw, schema)
+
+    present = analyze.accounts(frame)
+    if args.account is not None:
+        frame = analyze.for_account(frame, args.account)
+    elif len(present) > 1:
+        raise SystemExit(
+            f"{args.source!r} holds {len(present)} accounts, which cannot be summed together.\n"
+            f"Choose one:  --account {present[0]}\n"
+            f"Available:   {', '.join(present)}"
+        )
+
+    return categorize.add_categories(frame)
+
+
+def run_evaluation() -> None:
+    """Print the baseline-versus-model comparison on the labelled benchmark.
+
+    Imported lazily: this is the only path that needs scikit-learn, and
+    someone running the ordinary pipeline should not pay for it.
+    """
+    from . import benchmark, evaluate
+
+    bench = benchmark.load_benchmark()
+    section("Benchmark")
+    print(bench.summary())
+
+    scores, model_predictions = benchmark.compare_all(bench)
+    section("How well does each approach do")
+    print(evaluate.comparison_table(scores))
+
+    truth = bench.test["label"]
+    section("Per class, classifier, worst recall first")
+    print(evaluate.per_class_report(truth, model_predictions).to_string())
+
+    section("Most frequent mistakes")
+    print(evaluate.worst_confusions(truth, model_predictions).to_string(index=False))
+
+
 def main() -> None:
     args = parse_args()
     pd.set_option("display.width", 120)
     pd.set_option("display.max_colwidth", 46)
 
-    if not args.statement.exists():
-        raise SystemExit(
-            f"No statement at {args.statement}\n"
-            "Generate the sample first:  python scripts/make_sample.py"
-        )
+    if args.list_sources:
+        print(describe_sources())
+        return
 
-    frame = categorize.add_categories(load_and_clean(args.statement))
+    if args.evaluate:
+        run_evaluation()
+        return
+
+    frame = load_frame(args)
     spend = analyze.spending_only(frame)
 
     section("Statement")

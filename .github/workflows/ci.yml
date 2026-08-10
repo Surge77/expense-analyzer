@@ -23,10 +23,10 @@ jobs:
         python-version: ["3.11", "3.12"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -44,22 +44,40 @@ jobs:
         run: ruff check .
 
       - name: Tests
-        run: pytest --cov --cov-report=term-missing --cov-report=xml
+        # Gate at 90, currently sitting at 100. The headroom is deliberate:
+        # a gate pinned to the exact current number turns every later commit
+        # into a coverage-chasing exercise and invites tests written to move
+        # the number rather than to catch anything.
+        run: pytest --cov --cov-report=term-missing --cov-report=xml --cov-fail-under=90
 
-      # Non-blocking for now: pandas and matplotlib ship loose type stubs, so
-      # `ExtensionArray` vs `ArrayLike` produces ~27 false positives that say
-      # nothing about correctness. Phase 1 resolves them, then `continue-on-
-      # error` comes off and this becomes a real gate.
-      - name: Types (informational)
+      - name: Types
         run: pyright
-        continue-on-error: true
+
+  integration:
+    name: real datasets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      # Downloads ~6 MB from Kaggle and parses all 116,201 real rows. No
+      # credentials: these datasets are public, and an expired token would
+      # actually make this fail where sending nothing succeeds.
+      - name: Parse the real datasets
+        run: pytest -m integration -q
 
   smoke:
     name: end-to-end run
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip

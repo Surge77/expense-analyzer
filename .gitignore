@@ -37,3 +37,6 @@ dist/
 Thumbs.db
 desktop.ini
 *.stackdump
+
+# Model artifacts are regenerated, never committed.
+models/
