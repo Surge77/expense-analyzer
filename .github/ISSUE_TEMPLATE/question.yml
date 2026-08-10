@@ -1,0 +1,27 @@
+name: Question
+description: Something in the code or docs is unclear
+labels: ["question", "documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is a teaching repository. "The README confused me here" is a
+        genuinely useful report — if it was unclear to you it is unclear.
+  - type: textarea
+    id: question
+    attributes:
+      label: What is your question?
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where were you looking?
+      placeholder: "README.md, the 'result' section — or src/expense_analyzer/clean.py:60"
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: Have you checked these?
+      options:
+        - label: "docs/glossary.md — plain-English definitions of the ML terms"
+        - label: "docs/results.md — the full write-up of the numbers"
