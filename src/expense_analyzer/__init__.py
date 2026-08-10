@@ -16,4 +16,8 @@ Import the stage you need:
 
 __version__ = "0.1.0"
 
-__all__ = ["analyze", "categorize", "clean", "plots"]
+# No `__all__` listing the submodules. They are not imported here on purpose:
+# `plots` pulls in matplotlib, and paying that import cost just to call
+# `clean.load_and_clean` would be rude to anyone using this as a library.
+# `from expense_analyzer import analyze` still works — Python imports a
+# submodule on demand.

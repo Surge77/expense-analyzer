@@ -44,15 +44,14 @@ jobs:
         run: ruff check .
 
       - name: Tests
-        run: pytest --cov --cov-report=term-missing --cov-report=xml
+        # Gate at 90, currently sitting at 100. The headroom is deliberate:
+        # a gate pinned to the exact current number turns every later commit
+        # into a coverage-chasing exercise and invites tests written to move
+        # the number rather than to catch anything.
+        run: pytest --cov --cov-report=term-missing --cov-report=xml --cov-fail-under=90
 
-      # Non-blocking for now: pandas and matplotlib ship loose type stubs, so
-      # `ExtensionArray` vs `ArrayLike` produces ~27 false positives that say
-      # nothing about correctness. Phase 1 resolves them, then `continue-on-
-      # error` comes off and this becomes a real gate.
-      - name: Types (informational)
+      - name: Types
         run: pyright
-        continue-on-error: true
 
   smoke:
     name: end-to-end run

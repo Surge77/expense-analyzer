@@ -39,6 +39,35 @@ def test_first_matching_rule_wins():
     assert categorize("UPI-NETFLIX ENTERTAINMENT-netflix@hdfcbank-AUTOPAY") == "Subscriptions"
 
 
+@pytest.mark.parametrize(
+    "narration",
+    [
+        "FDRL/INTERNAL FUND TRANSFE",
+        "TRF TO  Indiaforensic SERVICES I",
+        "TRF FROM  Indiaforensic SERVICES",
+        "FDRL/REAL TIME GROSS SETTL",
+    ],
+)
+def test_recognises_self_transfers_seen_in_real_bank_exports(narration):
+    """These four are the most common narrations in the 116k-row real bank
+    dataset. Without a Transfer rule they counted as spending."""
+    assert categorize(narration) == "Transfer"
+
+
+def test_income_beats_transfer_because_transfer_is_declared_last():
+    """`IMPS-CASHBACK CREDIT` and a NEFT salary line both look like transfers
+    by prefix. Income is declared above Transfer so they are not misfiled —
+    reordering CATEGORY_RULES silently breaks this."""
+    assert categorize("NEFT-ACME SOFTWARE PVT LTD-SALARY CREDIT") == "Income"
+    assert categorize("IMPS-CASHBACK CREDIT-123456") == "Income"
+
+
+def test_transfer_rules_do_not_touch_the_samples_opaque_narrations():
+    """The shipped sample keeps ~8% uncategorised on purpose as the
+    rule-writing exercise. The Transfer rules must not quietly solve it."""
+    assert categorize("NEFT-UTIB0000123-TRF-472731") == UNCATEGORIZED
+
+
 def test_coverage_reports_rows_and_rupees_separately():
     frame = pd.DataFrame(
         {
