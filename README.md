@@ -198,6 +198,15 @@ release before it breaks something.
 | [MODEL_CARD.md](MODEL_CARD.md) | Intended use, metrics, limitations |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Setup, workflow, what a good PR looks like |
 
+## Notebooks
+
+Both are committed with their outputs, so they read on GitHub without being run.
+
+| Notebook | Contents |
+| --- | --- |
+| [01_explore.ipynb](notebooks/01_explore.ipynb) | The pipeline end to end on the sample: clean, categorise, aggregate, chart |
+| [02_rules_vs_model.ipynb](notebooks/02_rules_vs_model.ipynb) | The measurement — baselines, the classifier, cross-validation, and where it goes wrong |
+
 ## Contributing
 
 Contributions are welcome, particularly new `CATEGORY_RULES` keywords and
