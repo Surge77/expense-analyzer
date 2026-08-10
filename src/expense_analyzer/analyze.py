@@ -15,6 +15,38 @@ RECURRING_MAX_SPREAD = 0.05
 ANOMALY_MULTIPLIER = 3.0
 
 
+def accounts(frame: pd.DataFrame) -> list[str]:
+    """Account numbers present, or empty when the source has no such column."""
+    if "account" not in frame.columns:
+        return []
+    return sorted(frame["account"].unique())
+
+
+def for_account(frame: pd.DataFrame, account: str) -> pd.DataFrame:
+    """Narrow a multi-account export down to one account."""
+    if "account" not in frame.columns:
+        raise ValueError("this source has no account column; it is already a single account")
+    selected = frame[frame["account"] == account]
+    if selected.empty:
+        raise ValueError(f"no rows for account {account!r}; have: {', '.join(accounts(frame))}")
+    return selected.reset_index(drop=True)
+
+
+def _reject_mixed_accounts(frame: pd.DataFrame, what: str) -> None:
+    """Refuse to compute a per-person number across several people's accounts.
+
+    The real bank export holds ten unrelated accounts. Summing their incomes
+    and dividing produces a number that looks fine and means nothing, which
+    is worse than an error.
+    """
+    present = accounts(frame)
+    if len(present) > 1:
+        raise ValueError(
+            f"{what} is meaningless across {len(present)} accounts. "
+            f"Pick one first: analyze.for_account(frame, {present[0]!r})"
+        )
+
+
 def spending_only(frame: pd.DataFrame) -> pd.DataFrame:
     """Outgoing rows with a positive `amount`, for readable charts.
 
@@ -74,6 +106,8 @@ def top_transactions(spend: pd.DataFrame, top: int = 10) -> pd.DataFrame:
 
 def savings_rate(frame: pd.DataFrame) -> float:
     """Fraction of income not spent, across the whole statement."""
+    _reject_mixed_accounts(frame, "savings_rate")
+
     income = frame[frame["amount"] > 0]["amount"].sum()
     if income == 0:
         return 0.0

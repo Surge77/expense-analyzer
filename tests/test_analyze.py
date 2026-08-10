@@ -36,6 +36,52 @@ class TestSpendingOnly:
         assert categorized["amount"].tolist() == before
 
 
+class TestAccounts:
+    """The real bank export holds ten unrelated accounts in one file."""
+
+    @staticmethod
+    def _two_accounts(frame_factory):
+        frame = frame_factory(
+            [
+                ("2026-01-01", "NEFT-SALARY", 1000.0, "Income"),
+                ("2026-01-05", "UPI-SWIGGY", -100.0, "Food"),
+                ("2026-01-06", "UPI-DMART", -200.0, "Groceries"),
+            ]
+        )
+        frame["account"] = ["111", "111", "222"]
+        return frame
+
+    def test_lists_no_accounts_when_the_source_has_no_such_column(self, categorized):
+        assert analyze.accounts(categorized) == []
+
+    def test_lists_the_accounts_present(self, frame_factory):
+        assert analyze.accounts(self._two_accounts(frame_factory)) == ["111", "222"]
+
+    def test_for_account_narrows_to_one(self, frame_factory):
+        selected = analyze.for_account(self._two_accounts(frame_factory), "111")
+
+        assert len(selected) == 2
+        assert set(selected["account"]) == {"111"}
+
+    def test_for_account_lists_the_options_when_given_an_unknown_one(self, frame_factory):
+        with pytest.raises(ValueError, match="111, 222"):
+            analyze.for_account(self._two_accounts(frame_factory), "999")
+
+    def test_for_account_rejects_a_single_account_source(self, categorized):
+        with pytest.raises(ValueError, match="no account column"):
+            analyze.for_account(categorized, "111")
+
+    def test_savings_rate_refuses_to_mix_accounts(self, frame_factory):
+        """Summing ten strangers' incomes and dividing yields a plausible
+        number that means nothing — worse than an error."""
+        with pytest.raises(ValueError, match="meaningless across 2 accounts"):
+            analyze.savings_rate(self._two_accounts(frame_factory))
+
+    def test_savings_rate_works_once_narrowed_to_one_account(self, frame_factory):
+        frame = self._two_accounts(frame_factory)
+        assert analyze.savings_rate(analyze.for_account(frame, "111")) == 0.9
+
+
 class TestAggregations:
     def test_by_category_totals_biggest_first(self, categorized):
         totals = analyze.by_category(analyze.spending_only(categorized))
