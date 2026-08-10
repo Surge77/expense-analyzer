@@ -40,6 +40,11 @@ def parse_args() -> argparse.Namespace:
         help="Describe each available source and exit.",
     )
     parser.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="Score the rules and the classifier on the labelled benchmark, then exit.",
+    )
+    parser.add_argument(
         "--account",
         default=None,
         help="Narrow a multi-account export to one account before analysing.",
@@ -104,6 +109,30 @@ def load_frame(args: argparse.Namespace) -> pd.DataFrame:
     return categorize.add_categories(frame)
 
 
+def run_evaluation() -> None:
+    """Print the baseline-versus-model comparison on the labelled benchmark.
+
+    Imported lazily: this is the only path that needs scikit-learn, and
+    someone running the ordinary pipeline should not pay for it.
+    """
+    from . import benchmark, evaluate
+
+    bench = benchmark.load_benchmark()
+    section("Benchmark")
+    print(bench.summary())
+
+    scores, model_predictions = benchmark.compare_all(bench)
+    section("How well does each approach do")
+    print(evaluate.comparison_table(scores))
+
+    truth = bench.test["label"]
+    section("Per class, classifier, worst recall first")
+    print(evaluate.per_class_report(truth, model_predictions).to_string())
+
+    section("Most frequent mistakes")
+    print(evaluate.worst_confusions(truth, model_predictions).to_string(index=False))
+
+
 def main() -> None:
     args = parse_args()
     pd.set_option("display.width", 120)
@@ -111,6 +140,10 @@ def main() -> None:
 
     if args.list_sources:
         print(describe_sources())
+        return
+
+    if args.evaluate:
+        run_evaluation()
         return
 
     frame = load_frame(args)

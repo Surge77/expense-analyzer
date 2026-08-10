@@ -68,6 +68,9 @@ addopts = "-q -m 'not integration'"
 markers = [
     "integration: downloads and parses the real public datasets (needs network)",
 ]
+# Warnings are failures. A DeprecationWarning from pandas is how a silent
+# behaviour change announces itself a release before it breaks something.
+filterwarnings = ["error"]
 
 [tool.coverage.run]
 branch = true
