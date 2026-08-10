@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "expense-analyzer"
-version = "0.1.0"
+version = "1.1.0"
 description = "Turn a bank statement into spending findings — with a measured comparison of keyword rules against a text classifier."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -41,6 +41,7 @@ dev = [
     # Not optional. See the [tool.pyright] note: without these stubs pyright
     # reports 33 phantom errors on ordinary pandas indexing.
     "pandas-stubs==3.0.5.260730",
+    "hypothesis==6.165.2",
 ]
 notebook = [
     "jupyterlab==4.2.5",
@@ -57,6 +58,11 @@ expense-analyzer = "expense_analyzer.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Ships the py.typed marker so installers of this package get the type
+# information pyright already enforces here.
+[tool.setuptools.package-data]
+expense_analyzer = ["py.typed"]
 
 [tool.pytest.ini_options]
 # No pythonpath hack: the package is installed with `pip install -e .`, so
@@ -79,6 +85,10 @@ filterwarnings = [
     # deprecated. Nothing here can fix it, and it fires only on model load.
     # Remove once joblib ships a release using np.reshape.
     "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning",
+    # pytest-cov signals a coverage shortfall with a warning. Promoting it
+    # to an error turns a clean "coverage too low" message into a pytest
+    # INTERNALERROR that hides the actual number.
+    "ignore::pytest_cov.plugin.CovFailUnderWarning",
 ]
 
 [tool.coverage.run]

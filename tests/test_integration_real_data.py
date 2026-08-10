@@ -117,30 +117,30 @@ class TestBenchmarkAndModel:
     def test_rules_score_below_the_majority_baseline(self):
         """The headline finding: rules built for bank narrations do not
         transfer to a human's shorthand."""
-        from expense_analyzer import benchmark, evaluate
+        from expense_analyzer import baselines, evaluate
 
         bench = self._bench()
         truth = bench.test["label"]
-        majority_guess = benchmark.predict_majority(bench.train, bench.test)
+        majority_guess = baselines.predict_majority(bench.train, bench.test)
         majority = evaluate.score("majority", truth, majority_guess)
-        rules = evaluate.score("rules", truth, benchmark.predict_rules(bench.test))
+        rules = evaluate.score("rules", truth, baselines.predict_bank_rules(bench.test))
 
         assert majority.accuracy == pytest.approx(0.429, abs=0.02)
         assert rules.accuracy < majority.accuracy
         assert rules.accuracy == pytest.approx(0.134, abs=0.03)
 
     def test_classifier_clearly_beats_both_baselines(self):
-        from expense_analyzer import benchmark
+        from expense_analyzer import baselines
 
         bench = self._bench()
-        scores, _ = benchmark.compare_all(bench)
+        scores, _ = baselines.compare_all(bench)
         by_name = {item.name: item for item in scores}
 
         model_score = by_name["TF-IDF + LogReg"]
         assert model_score.accuracy > 0.80
         assert model_score.macro_f1 > 0.70
         assert model_score.accuracy > by_name["majority class"].accuracy
-        assert model_score.macro_f1 > by_name["keyword rules"].macro_f1
+        assert model_score.macro_f1 > by_name["bank rules (out of domain)"].macro_f1
 
     def test_model_leans_on_words_a_human_would_expect(self):
         """A model relying on something absurd has memorised a quirk."""
@@ -151,3 +151,61 @@ class TestBenchmarkAndModel:
         words = " ".join(model.top_features_for(pipeline, "Transportation", top=60)["feature"])
 
         assert any(term in words for term in ("bus", "train", "petrol", "rickshaw", "place"))
+
+
+class TestSplitStrategiesOnRealData:
+    """The three splits answer different questions and give different
+    numbers. These pin the relationships, loosely — a few points is noise —
+    but tightly enough that a regression in the split logic shows up."""
+
+    def test_random_split_has_substantial_note_overlap(self):
+        from expense_analyzer import benchmark
+
+        bench = benchmark.load_benchmark(strategy="random")
+        assert bench.seen_in_train.mean() == pytest.approx(0.567, abs=0.05)
+
+    def test_grouped_split_has_no_note_overlap_at_all(self):
+        """The guarantee the grouped strategy exists to provide."""
+        from expense_analyzer import benchmark
+
+        bench = benchmark.load_benchmark(strategy="grouped")
+        assert bench.seen_in_train.sum() == 0
+
+    def test_temporal_split_trains_only_on_earlier_transactions(self):
+        from expense_analyzer import benchmark
+
+        bench = benchmark.load_benchmark(strategy="temporal")
+        assert bench.train["date"].max() <= bench.test["date"].min()
+
+    def test_generalisation_score_is_lower_than_the_headline(self):
+        """The finding that matters: the random-split score is inflated by
+        notes the model has already seen."""
+        from expense_analyzer import baselines, benchmark
+
+        random_scores, _ = baselines.compare_all(benchmark.load_benchmark(strategy="random"))
+        grouped_scores, _ = baselines.compare_all(benchmark.load_benchmark(strategy="grouped"))
+
+        random_model = next(s for s in random_scores if s.name == "TF-IDF + LogReg")
+        grouped_model = next(s for s in grouped_scores if s.name == "TF-IDF + LogReg")
+
+        assert grouped_model.accuracy < random_model.accuracy - 0.05
+
+    def test_in_domain_rules_beat_the_ported_bank_rules_by_a_wide_margin(self):
+        """Separates "a model beats rules" from "in-domain beats out-of-domain"."""
+        from expense_analyzer import baselines, benchmark
+
+        scores, _ = baselines.compare_all(benchmark.load_benchmark(strategy="grouped"))
+        by_name = {s.name: s for s in scores}
+
+        in_domain = by_name["in-domain rules"].accuracy
+        ported = by_name["bank rules (out of domain)"].accuracy
+        assert in_domain > ported * 3
+
+    def test_hybrid_beats_the_model_on_genuinely_unseen_text(self):
+        """The measured justification for recommending the hybrid at all."""
+        from expense_analyzer import baselines, benchmark
+
+        scores, _ = baselines.compare_all(benchmark.load_benchmark(strategy="grouped"))
+        by_name = {s.name: s for s in scores}
+
+        assert by_name["hybrid (rules, then model)"].macro_f1 > by_name["TF-IDF + LogReg"].macro_f1

@@ -66,9 +66,18 @@ jobs:
       - name: Install
         run: pip install -e ".[dev]"
 
-      # Downloads ~6 MB from Kaggle and parses all 116,201 real rows. No
-      # credentials: these datasets are public, and an expired token would
-      # actually make this fail where sending nothing succeeds.
+      # Cache the downloads so a Kaggle outage does not turn every build red,
+      # and so repeated runs do not re-fetch 6 MB for no reason.
+      - name: Cache datasets
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/kagglehub
+          key: kagglehub-${{ hashFiles('src/expense_analyzer/data/loaders.py') }}
+          restore-keys: kagglehub-
+
+      # Parses all 116,201 real rows. No credentials: these datasets are
+      # public, and an expired token would make this fail where sending
+      # nothing succeeds.
       - name: Parse the real datasets
         run: pytest -m integration -q
 

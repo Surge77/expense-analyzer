@@ -8,7 +8,7 @@ tests and from `docs/results.md`.
 import pandas as pd
 import pytest
 
-from expense_analyzer import benchmark, model
+from expense_analyzer import baselines, benchmark, model
 
 
 @pytest.fixture
@@ -30,8 +30,8 @@ class TestCollapseRareClasses:
 
         collapsed = benchmark.collapse_rare_classes(labels, minimum=20)
 
-        assert set(collapsed) == {"Food", benchmark.OTHER}
-        assert (collapsed == benchmark.OTHER).sum() == 3
+        assert set(collapsed) == {"Food", baselines.OTHER}
+        assert (collapsed == baselines.OTHER).sum() == 3
 
     def test_leaves_classes_at_the_threshold_alone(self):
         labels = pd.Series(["Food"] * 20)
@@ -43,7 +43,7 @@ class TestBaselines:
         train = pd.DataFrame({"label": ["Food"] * 8 + ["Health"] * 2})
         test = pd.DataFrame({"label": ["Health"] * 3})
 
-        predicted = benchmark.predict_majority(train, test)
+        predicted = baselines.predict_majority(train, test)
 
         assert set(predicted) == {"Food"}
         assert len(predicted) == 3
@@ -53,7 +53,7 @@ class TestBaselines:
         untranslated comparison would score every correct answer as wrong."""
         test = pd.DataFrame({"narration": ["UPI-UBER INDIA-9921", "UPI-SWIGGY-1"]})
 
-        predicted = benchmark.predict_rules(test)
+        predicted = baselines.predict_bank_rules(test)
 
         assert list(predicted) == ["Transportation", "Food"]
 
@@ -62,11 +62,11 @@ class TestBaselines:
         from expense_analyzer.categorize import CATEGORY_RULES, UNCATEGORIZED
 
         expected = set(CATEGORY_RULES) | {UNCATEGORIZED}
-        assert expected == set(benchmark.RULE_TO_BENCHMARK)
+        assert expected == set(baselines.RULE_TO_BENCHMARK)
 
     def test_unmatched_narrations_fall_through_to_other(self):
         test = pd.DataFrame({"narration": ["fruits and vegetables"]})
-        assert list(benchmark.predict_rules(test)) == [benchmark.OTHER]
+        assert list(baselines.predict_bank_rules(test)) == [baselines.OTHER]
 
 
 class TestPipeline:
@@ -129,3 +129,38 @@ class TestExplainability:
 
         with pytest.raises(ValueError, match="unknown label"):
             model.top_features_for(pipeline, "Nonexistent")
+
+
+class TestConfidenceThresholding:
+    def test_abstains_below_the_threshold_instead_of_guessing(self, tiny_corpus):
+        pipeline = model.train(tiny_corpus)
+        frame = pd.DataFrame({"narration": ["dosa", "completely unrelated gibberish"]})
+
+        # A threshold of 1.0 is unreachable, so everything must abstain.
+        result = model.predict_with_confidence(pipeline, frame, threshold=1.0)
+
+        assert set(result["prediction"]) == {model.UNCERTAIN}
+        assert not result["answered"].any()
+
+    def test_answers_everything_at_a_threshold_of_zero(self, tiny_corpus):
+        pipeline = model.train(tiny_corpus)
+        frame = pd.DataFrame({"narration": ["dosa", "bus ticket"]})
+
+        result = model.predict_with_confidence(pipeline, frame, threshold=0.0)
+
+        assert result["answered"].all()
+        assert model.UNCERTAIN not in set(result["prediction"])
+
+    def test_confidence_is_a_probability_between_zero_and_one(self, tiny_corpus):
+        pipeline = model.train(tiny_corpus)
+        result = model.predict_with_confidence(
+            pipeline, pd.DataFrame({"narration": ["dosa", "petrol"]})
+        )
+
+        assert ((result["confidence"] >= 0) & (result["confidence"] <= 1)).all()
+
+    def test_keeps_the_callers_index(self, tiny_corpus):
+        pipeline = model.train(tiny_corpus)
+        frame = pd.DataFrame({"narration": ["dosa"]}, index=[99])
+
+        assert list(model.predict_with_confidence(pipeline, frame).index) == [99]

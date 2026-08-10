@@ -13,3 +13,4 @@ no downside listed is usually one that was not thought about hard enough.
 | [0003](0003-datasets-are-not-committed.md) | Download datasets on demand instead of committing them |
 | [0004](0004-lint-but-do-not-format.md) | Lint with ruff, but do not enforce `ruff format` |
 | [0005](0005-drop-rows-without-a-note.md) | Exclude unlabellable rows from the benchmark rather than scoring them |
+| [0006](0006-report-three-splits.md) | Report three split strategies instead of one headline number |

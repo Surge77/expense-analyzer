@@ -38,18 +38,51 @@ Three preparation choices, each of which affects the numbers:
 
 ## Metrics
 
-On the 485-row held-out test set:
+The score depends on how the data is split, so all three are reported.
 
-| approach | accuracy | macro F1 | weighted F1 |
+| split | notes seen in training | accuracy | macro F1 |
 | --- | ---: | ---: | ---: |
-| majority class | 42.9% | 0.050 | 0.257 |
-| keyword rules | 13.4% | 0.035 | 0.046 |
-| this model | 87.0% | 0.769 | 0.864 |
+| `random` | 56.7% | 87.0% | 0.769 |
+| `grouped` | 0% | 72.1% | 0.460 |
+| `temporal` | 58.6% | 87.2% | 0.784 |
 
-5-fold cross-validation on the training split: macro F1 0.740 ± 0.034.
+**`grouped` is the number to quote for generalisation.** The `random` split
+lets an identical note appear in both halves; on the 275 test rows whose note
+also appears in training the model scores 96.4%, and on the 210 genuinely
+unseen rows it scores 74.8%.
 
-Macro F1 is the number to read. Accuracy rewards a model for getting the
-largest class right, and Food alone is 43% of the data.
+Against every baseline, on genuinely unseen text (`grouped`):
+
+| approach | accuracy | macro F1 |
+| --- | ---: | ---: |
+| majority class | 43.7% | 0.055 |
+| bank rules (out of domain) | 13.4% | 0.029 |
+| in-domain rules | 56.9% | 0.502 |
+| this model | 72.1% | 0.460 |
+| hybrid (rules, then model) | 73.9% | 0.567 |
+
+Note the model **loses to hand-written rules on macro F1** here. It wins on
+accuracy, which the large classes dominate; the rules generalise better across
+small classes. The hybrid beats both, and is what this model should be
+deployed as when novel descriptions are expected.
+
+5-fold cross-validation on the `random` training split: macro F1 0.740 ± 0.034.
+
+Macro F1 is the number to read. Accuracy rewards getting the largest class
+right, and Food alone is 43% of the data.
+
+### Abstention
+
+With a confidence threshold the model can decline to answer:
+
+| threshold | coverage | accuracy when answered |
+| --- | ---: | ---: |
+| 0.0 | 100% | 87.0% |
+| 0.3 | 82.1% | 94.2% |
+| 0.5 | 57.3% | 97.8% |
+
+Probabilities are **uncalibrated** — treat the threshold as a dial tuned on
+this curve, not as a probability.
 
 Per-class scores and confusion matrices: [docs/results.md](docs/results.md).
 
@@ -64,11 +97,11 @@ Per-class scores and confusion matrices: [docs/results.md](docs/results.md).
 - **`Family` is never predicted.** 23 examples, no distinctive vocabulary.
 - **`Household` and `Food` are confused in both directions** — the dominant
   error. Groceries to cook with and a ready-made meal use the same words.
-- **485 test rows.** Two or three points of difference is noise.
+- **A few hundred test rows.** Two or three points of difference is noise.
+- **Uncalibrated probabilities.** See the abstention note above.
 - **Indian context.** Amounts in rupees; notes mix English, Marathi and
   transliteration. Character n-grams help, but nothing here shows it works on
   another language.
-- **No calibration.** Predicted probabilities are not meaningful confidences.
 
 ## Ethical considerations
 

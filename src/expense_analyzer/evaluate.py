@@ -167,3 +167,36 @@ def plot_confusion(y_true: pd.Series, y_pred: pd.Series, path: Path, title: str)
     fig.savefig(path, dpi=150)
     plt.close(fig)
     return path
+
+
+def coverage_accuracy_curve(
+    y_true: pd.Series,
+    predicted: pd.Series,
+    confidence: pd.Series,
+    thresholds: tuple[float, ...] = (0.0, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
+) -> pd.DataFrame:
+    """How accuracy improves as the model is allowed to abstain.
+
+    `coverage` is the share of rows it was willing to answer; `accuracy` is
+    how often it was right *among those*. The trade is the useful part: if
+    answering 70% of rows at 95% accuracy beats answering everything at 87%,
+    the remaining 30% is better spent on a human's attention.
+    """
+    rows = []
+    for threshold in thresholds:
+        answered = confidence >= threshold
+        coverage = float(answered.mean())
+        accuracy = (
+            float(accuracy_score(y_true[answered], predicted[answered]))
+            if answered.any()
+            else 0.0
+        )
+        rows.append(
+            {
+                "threshold": threshold,
+                "coverage": round(coverage, 3),
+                "accuracy_when_answered": round(accuracy, 3),
+                "answered": int(answered.sum()),
+            }
+        )
+    return pd.DataFrame(rows)

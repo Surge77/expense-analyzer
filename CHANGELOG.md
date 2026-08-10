@@ -5,6 +5,55 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-08-10
+
+The headline number from 1.0.0 did not survive being interrogated. This
+release reports what it actually measures, and the honest version turned out
+to be more interesting.
+
+### Added
+
+- **Three split strategies** — `random`, `grouped` and `temporal` — reported
+  side by side wherever a score appears. They differ by fifteen points of
+  accuracy on identical data with an identical model.
+- **Leakage breakdown.** 56.7% of the random test set is notes already present
+  in training; the model scores 96.4% on those and 74.8% on genuinely unseen
+  text. Both figures are published.
+- **In-domain rule baseline.** Roughly thirty keywords written from the
+  training split only. This is the fair comparison: the previous baseline used
+  bank-narration rules on handwritten notes, which confounded "a model beats
+  rules" with "in-domain beats out-of-domain".
+- **Hybrid categoriser** — rules first, model where they abstain. On genuinely
+  unseen text it beats both (73.9% / 0.567 against the model's 72.1% / 0.460).
+- **Confidence thresholding.** `model.predict_with_confidence` abstains below
+  a cutoff, and `evaluate.coverage_accuracy_curve` shows the trade: answering
+  82% of rows raises accuracy from 87% to 94%.
+- **`--categorizer {rules,model,hybrid}`** on the CLI, so the classifier is
+  used and not merely measured. Warns when pointed outside its domain.
+- **Property-based tests** (hypothesis) over the parsing functions, where the
+  failure mode is a plausible wrong number rather than an exception.
+- `py.typed`, Dependabot, CodeQL, `.editorconfig`, `CITATION.cff`, and a
+  cached dataset download in CI.
+
+### Changed
+
+- **The finding inverted.** On genuinely unseen text, hand-written rules beat
+  the classifier on macro F1. The model wins on accuracy, which the large
+  classes dominate. The recommendation is now conditional and measured:
+  rules-then-model for novel descriptions, model alone for recurring spending.
+- Baselines moved from `benchmark.py` to `baselines.py`, keeping both files
+  under the 300-line limit.
+- README, MODEL_CARD and docs/results.md all lead with the split-dependent
+  numbers rather than a single figure.
+
+### Fixed
+
+- **In-domain rule ordering.** `Transportation` matches the bare substring
+  `place`, which swallowed `workplace` — the only `Salary` note in the data.
+  Caught by a test; `Salary` now sits above it, pinned.
+- pytest-cov's coverage-shortfall warning no longer becomes a pytest
+  INTERNALERROR under `filterwarnings = ["error"]`.
+
 ## [1.0.0] - 2026-08-10
 
 First public release. The pipeline existed before this; what is new is that
@@ -62,4 +111,5 @@ its central claim is now measured rather than asserted.
 - Download failures now identify a stale Kaggle token, which causes a request
   to fail where sending no credentials at all would have succeeded.
 
+[1.1.0]: https://github.com/Surge77/expense-analyzer/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Surge77/expense-analyzer/releases/tag/v1.0.0
