@@ -1,7 +1,7 @@
 """Run the whole pipeline and print the numbers you build findings from.
 
-    python run.py
-    python run.py --statement data/my_statement.csv
+    python -m expense_analyzer
+    python -m expense_analyzer --statement data/my_statement.csv
 """
 
 import argparse
@@ -9,12 +9,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from src import analyze, categorize, plots
-from src.clean import load_and_clean
+from . import analyze, categorize, plots
+from .clean import load_and_clean
 
-ROOT = Path(__file__).resolve().parent
-DEFAULT_STATEMENT = ROOT / "data" / "sample_statement.csv"
-DEFAULT_REPORTS = ROOT / "reports"
+# Resolved against the working directory, not against the package location.
+# Once installed the package sits in site-packages, which has no `data/`
+# beside it, so anchoring to `__file__` would point at nothing.
+DEFAULT_STATEMENT = Path("data/sample_statement.csv")
+DEFAULT_REPORTS = Path("reports")
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,7 +61,8 @@ def main() -> None:
     spend = analyze.spending_only(frame)
 
     section("Statement")
-    print(f"{len(frame)} transactions, {frame['date'].min():%d %b %Y} to {frame['date'].max():%d %b %Y}")
+    first, last = frame["date"].min(), frame["date"].max()
+    print(f"{len(frame)} transactions, {first:%d %b %Y} to {last:%d %b %Y}")
     print(f"Total spent   {spend['amount'].sum():>12,.2f}")
     print(f"Total income  {frame[frame['amount'] > 0]['amount'].sum():>12,.2f}")
     print(f"Savings rate  {analyze.savings_rate(frame):>12.1%}")

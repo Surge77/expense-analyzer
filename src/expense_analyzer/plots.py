@@ -12,10 +12,10 @@ import matplotlib
 # no display attached.
 matplotlib.use("Agg")
 
-import matplotlib.pyplot as plt  # noqa: E402  (must follow the backend call)
-import pandas as pd  # noqa: E402
+import matplotlib.pyplot as plt
+import pandas as pd
 
-from . import analyze  # noqa: E402
+from . import analyze
 
 DPI = 150
 FIGSIZE = (9, 5)

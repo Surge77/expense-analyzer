@@ -1,0 +1,113 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "expense-analyzer"
+version = "0.1.0"
+description = "Turn a bank statement into spending findings — with a measured comparison of keyword rules against a text classifier."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "TEJAS", email = "tejasdeshmane66@gmail.com" }]
+keywords = ["pandas", "data-analysis", "text-classification", "personal-finance", "scikit-learn"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+
+# Pinned exactly. A portfolio repo that cannot be reproduced two years from
+# now is not evidence of anything.
+dependencies = [
+    "pandas==2.2.3",
+    "matplotlib==3.10.8",
+    "scikit-learn==1.8.0",
+    "joblib==1.5.3",
+    "kagglehub==1.0.2",
+    "openpyxl==3.1.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.0.3",
+    "pytest-cov==6.0.0",
+    "ruff==0.16.2",
+    "pyright==1.1.411",
+]
+notebook = [
+    "jupyterlab==4.2.5",
+    "seaborn==0.13.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/Surge77/expense-analyzer"
+Repository = "https://github.com/Surge77/expense-analyzer"
+Issues = "https://github.com/Surge77/expense-analyzer/issues"
+
+[project.scripts]
+expense-analyzer = "expense_analyzer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+# No pythonpath hack: the package is installed with `pip install -e .`, so
+# tests import it exactly the way a user would.
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+branch = true
+source = ["expense_analyzer"]
+omit = ["*/__pycache__/*", "*/tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Deliberately a readable subset rather than everything ruff offers. This is
+# a teaching repo: a linter that fires on style opinions teaches nothing and
+# discourages contributors.
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes — real bugs: unused names, undefined vars
+    "I",    # isort — import ordering
+    "N",    # pep8-naming
+    "UP",   # pyupgrade — modern syntax
+    "B",    # flake8-bugbear — likely bugs, e.g. mutable default args
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+    "RUF",  # ruff-specific
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Notebooks legitimately run IPython magics (%load_ext, %matplotlib) before
+# their imports, which E402 cannot know about.
+"*.ipynb" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src", "expense_analyzer"]
+
+[tool.pyright]
+include = ["src", "tests", "scripts", "run.py"]
+pythonVersion = "3.11"
+# "basic" not "strict": pandas' stubs are loose enough that strict mode
+# produces mostly false positives on DataFrame operations.
+typeCheckingMode = "basic"
+reportMissingImports = true

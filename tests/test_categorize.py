@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from src.categorize import UNCATEGORIZED, add_categories, categorize, coverage
+from expense_analyzer.categorize import UNCATEGORIZED, add_categories, categorize, coverage
 
 
 @pytest.mark.parametrize(

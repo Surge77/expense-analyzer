@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from src.clean import clean_statement, parse_amount
+from expense_analyzer.clean import clean_statement, parse_amount
 
 
 @pytest.fixture
@@ -47,7 +47,7 @@ def test_drops_footer_rows_without_a_date(raw_statement):
 
 def test_spending_is_negative_and_income_is_positive(raw_statement):
     cleaned = clean_statement(raw_statement)
-    amounts = dict(zip(cleaned["narration"].str[4:10], cleaned["amount"]))
+    amounts = dict(zip(cleaned["narration"].str[4:10], cleaned["amount"], strict=True))
     assert amounts["SWIGGY"] == -347.00
     assert cleaned.loc[cleaned["amount"] > 0, "amount"].iloc[0] == 32000.00
 
