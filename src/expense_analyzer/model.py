@@ -134,3 +134,45 @@ def top_features_for(pipeline: Pipeline, label: str, top: int = 12) -> pd.DataFr
 
     frame = pd.DataFrame({"feature": names, "weight": weights})
     return frame.nlargest(top, "weight").reset_index(drop=True)
+
+
+UNCERTAIN = "Uncertain"
+
+
+def predict_with_confidence(
+    pipeline: Pipeline,
+    frame: pd.DataFrame,
+    threshold: float = 0.0,
+) -> pd.DataFrame:
+    """Predict, but abstain when the model is not confident enough.
+
+    Returns `prediction`, `confidence` and `answered`. Below the threshold the
+    prediction becomes `Uncertain` rather than a guess.
+
+    This is the shape a real tool wants. Categorising a statement is a
+    suggestion a human corrects, and a wrong confident answer costs more than
+    a blank one: a blank asks for two seconds of attention, a wrong label
+    quietly corrupts a total nobody re-checks.
+
+    Note the probabilities are uncalibrated — `0.8` does not mean "right 80%
+    of the time". Use the threshold as a dial tuned on the coverage/accuracy
+    curve, not as a probability.
+    """
+    probabilities = pipeline.predict_proba(frame["narration"])
+    classes = pipeline.named_steps["classifier"].classes_
+
+    confidence = probabilities.max(axis=1)
+    predicted = [classes[index] for index in probabilities.argmax(axis=1)]
+    answered = confidence >= threshold
+
+    return pd.DataFrame(
+        {
+            "prediction": [
+                label if ok else UNCERTAIN
+                for label, ok in zip(predicted, answered, strict=True)
+            ],
+            "confidence": confidence,
+            "answered": answered,
+        },
+        index=frame.index,
+    )

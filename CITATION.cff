@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+title: expense-analyzer
+message: If you refer to this project, please cite it as below.
+type: software
+authors:
+  - given-names: TEJAS
+    alias: Surge77
+repository-code: "https://github.com/Surge77/expense-analyzer"
+abstract: >-
+  A bank-statement analysis pipeline that measures its own keyword
+  categorisation rules against a TF-IDF and logistic-regression classifier on
+  real hand-labelled transactions, reporting random, grouped and temporal
+  splits so the effect of near-duplicate notes is visible.
+keywords:
+  - text-classification
+  - personal-finance
+  - scikit-learn
+  - pandas
+license: MIT
+version: 1.1.0
+date-released: "2026-08-10"

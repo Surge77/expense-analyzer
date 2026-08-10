@@ -126,3 +126,41 @@ class TestPlotConfusion:
         path = evaluate.plot_confusion(truth, predicted, tmp_path / "cm.png", "edge case")
 
         assert path.exists()
+
+
+class TestCoverageAccuracyCurve:
+    def test_coverage_falls_as_the_threshold_rises(self):
+        truth = pd.Series(["Food", "Food", "Health", "Health"])
+        predicted = pd.Series(["Food", "Food", "Health", "Food"])
+        confidence = pd.Series([0.9, 0.9, 0.9, 0.2])
+
+        curve = evaluate.coverage_accuracy_curve(
+            truth, predicted, confidence, thresholds=(0.0, 0.5)
+        )
+
+        assert curve.loc[0, "coverage"] == 1.0
+        assert curve.loc[1, "coverage"] == 0.75
+
+    def test_accuracy_improves_once_the_unsure_row_is_dropped(self):
+        """The whole point of abstaining: the row it was unsure about was
+        also the row it got wrong."""
+        truth = pd.Series(["Food", "Food", "Health", "Health"])
+        predicted = pd.Series(["Food", "Food", "Health", "Food"])
+        confidence = pd.Series([0.9, 0.9, 0.9, 0.2])
+
+        curve = evaluate.coverage_accuracy_curve(
+            truth, predicted, confidence, thresholds=(0.0, 0.5)
+        )
+
+        assert curve.loc[0, "accuracy_when_answered"] == 0.75
+        assert curve.loc[1, "accuracy_when_answered"] == 1.0
+
+    def test_reports_zero_rather_than_raising_when_nothing_is_answered(self):
+        truth = pd.Series(["Food"])
+        predicted = pd.Series(["Food"])
+        confidence = pd.Series([0.1])
+
+        curve = evaluate.coverage_accuracy_curve(truth, predicted, confidence, thresholds=(0.9,))
+
+        assert curve.loc[0, "coverage"] == 0.0
+        assert curve.loc[0, "accuracy_when_answered"] == 0.0
