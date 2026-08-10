@@ -14,7 +14,7 @@ Import the stage you need:
     >>> from expense_analyzer.clean import load_and_clean
 """
 
-__version__ = "0.1.0"
+__version__ = "1.1.0"
 
 # No `__all__` listing the submodules. They are not imported here on purpose:
 # `plots` pulls in matplotlib, and paying that import cost just to call

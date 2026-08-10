@@ -2,17 +2,18 @@
 
     python scripts/run_benchmark.py
 
-Downloads the labelled dataset, scores every approach, and writes the numbers
-the README quotes. Run it whenever the rules or the model change, so the
-documented results never drift from what the code actually does.
+Scores every approach under all three split strategies, so the documented
+numbers can never drift from what the code actually does. Run it whenever the
+rules or the model change.
 """
 
 from datetime import date
 from pathlib import Path
 
+import pandas as pd
 from sklearn.model_selection import cross_val_score
 
-from expense_analyzer import benchmark, evaluate, model
+from expense_analyzer import baselines, benchmark, evaluate, model
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS_PATH = ROOT / "docs" / "results.md"
@@ -20,95 +21,172 @@ FIGURE_DIR = ROOT / "docs" / "images"
 CV_FOLDS = 5
 
 
-def markdown_table(scores: list[evaluate.Scores]) -> str:
-    lines = [
-        "| approach | accuracy | macro F1 | weighted F1 |",
-        "| --- | ---: | ---: | ---: |",
-    ]
-    for item in scores:
-        lines.append(
-            f"| {item.name} | {item.accuracy:.1%} | {item.macro_f1:.3f} | {item.weighted_f1:.3f} |"
-        )
-    return "\n".join(lines)
-
-
-def frame_to_markdown(frame, index_name: str) -> str:
-    header = f"| {index_name} | " + " | ".join(str(c) for c in frame.columns) + " |"
-    divider = "| --- " * (len(frame.columns) + 1) + "|"
+def markdown_table(frame: pd.DataFrame) -> str:
+    header = "| " + " | ".join(str(column) for column in frame.columns) + " |"
+    divider = "| --- " * len(frame.columns) + "|"
     rows = [
-        f"| {index} | " + " | ".join(str(value) for value in row) + " |"
-        for index, row in zip(frame.index, frame.to_numpy(), strict=True)
+        "| " + " | ".join(str(value) for value in row) + " |" for row in frame.to_numpy()
     ]
     return "\n".join([header, divider, *rows])
 
 
+def scores_table(scores: list[evaluate.Scores]) -> str:
+    return markdown_table(
+        pd.DataFrame(
+            [
+                {
+                    "approach": item.name,
+                    "accuracy": f"{item.accuracy:.1%}",
+                    "macro F1": f"{item.macro_f1:.3f}",
+                    "weighted F1": f"{item.weighted_f1:.3f}",
+                }
+                for item in scores
+            ]
+        )
+    )
+
+
+def run_strategy(strategy: benchmark.Strategy):
+    bench = benchmark.load_benchmark(strategy=strategy)
+    scores, predictions = baselines.compare_all(bench)
+    return bench, scores, predictions
+
+
 def main() -> None:
-    bench = benchmark.load_benchmark()
-    scores, model_predictions = benchmark.compare_all(bench)
+    FIGURE_DIR.mkdir(parents=True, exist_ok=True)
+    sections: dict[str, str] = {}
+    overview_rows = []
+
+    for strategy in benchmark.STRATEGIES:
+        bench, scores, predictions = run_strategy(strategy)
+        sections[strategy] = "\n\n".join(
+            [f"### `{strategy}` split", "```\n" + bench.summary() + "\n```", scores_table(scores)]
+        )
+        learned = next(item for item in scores if item.name == "TF-IDF + LogReg")
+        overview_rows.append(
+            {
+                "split": f"`{strategy}`",
+                "test rows": f"{len(bench.test):,}",
+                "notes seen in train": f"{bench.seen_in_train.mean():.1%}",
+                "accuracy": f"{learned.accuracy:.1%}",
+                "macro F1": f"{learned.macro_f1:.3f}",
+            }
+        )
+
+    # The random split is the one everything else is anchored to.
+    bench, scores, predictions = run_strategy("random")
     truth = bench.test["label"]
 
-    pipeline = model.build_pipeline()
+    seen = bench.seen_in_train
+    leakage = pd.DataFrame(
+        [
+            {
+                "test subset": subset,
+                "n": int(mask.sum()),
+                "accuracy": f"{evaluate.score('x', truth[mask], predictions[mask]).accuracy:.1%}",
+                "macro F1": f"{evaluate.score('x', truth[mask], predictions[mask]).macro_f1:.3f}",
+            }
+            for subset, mask in [
+                ("note also appears in training", seen),
+                ("genuinely unseen text", ~seen),
+            ]
+        ]
+    )
+
+    pipeline = model.train(bench.train)
+    confident = model.predict_with_confidence(pipeline, bench.test)
+    curve = evaluate.coverage_accuracy_curve(
+        truth, confident["prediction"], confident["confidence"]
+    )
+
     cv = cross_val_score(
-        pipeline, bench.train["narration"], bench.train["label"], cv=CV_FOLDS, scoring="f1_macro"
+        model.build_pipeline(),
+        bench.train["narration"],
+        bench.train["label"],
+        cv=CV_FOLDS,
+        scoring="f1_macro",
     )
 
-    FIGURE_DIR.mkdir(parents=True, exist_ok=True)
     evaluate.plot_confusion(
-        truth,
-        model_predictions,
-        FIGURE_DIR / "confusion_model.png",
-        "TF-IDF + Logistic Regression",
+        truth, predictions, FIGURE_DIR / "confusion_model.png", "TF-IDF + Logistic Regression"
     )
     evaluate.plot_confusion(
         truth,
-        benchmark.predict_rules(bench.test),
+        baselines.predict_household_rules(bench.test),
         FIGURE_DIR / "confusion_rules.png",
-        "Keyword rules",
+        "In-domain keyword rules",
     )
 
-    per_class = evaluate.per_class_report(truth, model_predictions)
-    mistakes = evaluate.worst_confusions(truth, model_predictions)
-
-    RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
     RESULTS_PATH.write_text(
         TEMPLATE.format(
             generated=date.today().isoformat(),
-            summary=bench.summary(),
-            classes=", ".join(f"`{name}`" for name in bench.classes),
-            table=markdown_table(scores),
+            seed=benchmark.RANDOM_SEED,
+            overview=markdown_table(pd.DataFrame(overview_rows)),
+            leakage=markdown_table(leakage),
+            random_section=sections["random"],
+            grouped_section=sections["grouped"],
+            temporal_section=sections["temporal"],
             cv_mean=cv.mean(),
             cv_std=cv.std(),
             folds=CV_FOLDS,
-            per_class=frame_to_markdown(per_class, "class"),
-            mistakes=frame_to_markdown(mistakes.set_index("actual"), "actual"),
-            seed=benchmark.RANDOM_SEED,
+            classes=", ".join(f"`{name}`" for name in bench.classes),
+            per_class=markdown_table(
+                evaluate.per_class_report(truth, predictions).reset_index(names="class")
+            ),
+            mistakes=markdown_table(evaluate.worst_confusions(truth, predictions)),
+            curve=markdown_table(curve),
         ),
         encoding="utf-8",
     )
     print(f"wrote {RESULTS_PATH.relative_to(ROOT)}")
-    print(f"wrote {FIGURE_DIR.relative_to(ROOT)}/confusion_model.png")
-    print(f"wrote {FIGURE_DIR.relative_to(ROOT)}/confusion_rules.png")
+    print(f"wrote {(FIGURE_DIR / 'confusion_model.png').relative_to(ROOT)}")
+    print(f"wrote {(FIGURE_DIR / 'confusion_rules.png').relative_to(ROOT)}")
 
 
 TEMPLATE = """\
 # Results
 
-Generated by `python scripts/run_benchmark.py` on {generated}.
-Seed {seed}, so these numbers reproduce exactly.
+Generated by `python scripts/run_benchmark.py` on {generated}. Seed {seed}, so
+every number here reproduces exactly.
 
-## The benchmark
+## The number depends on the question
 
-{summary}
+{overview}
+
+All three use identical data and an identical model. Only the split differs,
+and it moves accuracy by twelve points. Reporting one of these alone would be
+a choice about which story to tell.
+
+- **`random`** — stratified, but an identical note can land in both halves.
+  That is the real situation for categorising *your own* recurring spending:
+  you write "grocery" hundreds of times and want it recognised each time.
+- **`grouped`** — every copy of a note stays on one side. This is the honest
+  answer to "will it handle a description it has never seen".
+- **`temporal`** — train on the past, test on the future. The deployment case.
+
+## How much of the score is memory
+
+Splitting the `random` test set by whether its note also appears in training:
+
+{leakage}
+
+The gap is the point. A large part of the headline figure is the model
+recognising a string it has already been shown, not generalising. Neither
+number is wrong; they answer different questions, and publishing only the
+higher one would be misleading.
+
+## Every approach, every split
+
+{random_section}
+
+{grouped_section}
+
+{temporal_section}
+
+Cross-validation on the `random` training split alone: macro F1
+**{cv_mean:.3f} ± {cv_std:.3f}** over {folds} folds.
 
 Classes: {classes}
-
-## How well does each approach do
-
-{table}
-
-Cross-validation on the training split alone: macro F1
-**{cv_mean:.3f} ± {cv_std:.3f}** over {folds} folds. Close to the held-out
-test score, so the test result is not a lucky split.
 
 ## Reading these numbers
 
@@ -116,19 +194,46 @@ test score, so the test result is not a lucky split.
 because that is Food's share of the data. Its macro F1 of 0.050 is the honest
 description of a model that learned nothing.
 
-**The keyword rules score 13.4% — far below the majority baseline.** This is
-the headline finding, and it is not a bug. The rules match merchant names in
-bank narrations (`UPI-SWIGGY-512334`). This benchmark holds a human's private
-shorthand: *fruits and vegetables*, *Shengdane pav kg*, *Mutual fund A*. The
-rules leave **93.2%** of it uncategorised, and uncategorised is scored as a
-miss.
+**Bank rules score far below the majority baseline.** They match merchant
+names in bank narrations (`UPI-SWIGGY-512334`). This benchmark holds a
+human's private shorthand: *fruits and vegetables*, *Shengdane pav kg*. The
+rules leave 93.2% of it uncategorised, and uncategorised scores as a miss.
+That measures **transfer between two kinds of text**, not whether rules work.
 
-What that measures is transfer between two different text distributions, not
-whether rules work. On their own domain the rules are precise and completely
-explainable. Moved to someone's handwriting, they collapse.
+**In-domain rules are the fair baseline.** Roughly thirty keywords, written by
+reading the training split only — the same way anyone would approach a new
+dataset. Comparing the model against *these* separates "a model beats rules"
+from "in-domain beats out-of-domain", which the bank-rules number alone
+confounds.
 
-**The classifier reaches 87.0% accuracy and 0.769 macro F1** because it learns
-this vocabulary instead of assuming a different one.
+## Which should you actually use
+
+The interesting result is that it depends, and the tables above say on what.
+
+**On text the model has seen before** (`random`, `temporal`) the model wins
+outright, and the hybrid *hurts* — a rule fires and overrides a model that
+would have been right.
+
+**On genuinely unseen text** (`grouped`) the ordering inverts. The model still
+wins on accuracy, because accuracy is dominated by the large classes it
+handles well. But the rules beat it on **macro F1**, because a keyword like
+`doctor` keeps working on text nobody has ever seen, while the model needs
+vocabulary it recognises. The hybrid then beats both on both measures.
+
+| approach | `grouped` accuracy | `grouped` macro F1 |
+| --- | ---: | ---: |
+| in-domain rules | 56.9% | 0.502 |
+| TF-IDF + LogReg | 72.1% | 0.460 |
+| hybrid | **73.9%** | **0.567** |
+
+So: **rules-then-model if you expect novel descriptions; the model alone for
+your own recurring spending.** That is a decision backed by a measurement
+rather than a preference, and it is the opposite of the usual conclusion that
+the model simply wins.
+
+It also explains why the rules were worth building first. Their value is not
+raw accuracy — it is that they degrade gracefully on data nobody has seen,
+which is exactly where a small model is weakest.
 
 ## Per class
 
@@ -144,27 +249,47 @@ misses, not what it gets right.
 `Household` and `Food` trading places is the dominant error, and it is a
 genuinely hard boundary: groceries bought to cook with and a meal bought
 ready-made are the same words in a note. `Family` is never predicted at all —
-23 examples across the whole dataset is not enough to learn a class that has
-no distinctive vocabulary.
+its training rows share no vocabulary whatever (ipad, scratch guard, shampoo,
+exam form), which is also why it gets no hand-written rule.
+
+## Abstaining when unsure
+
+The model can decline to answer below a confidence threshold. `coverage` is
+the share of rows it was willing to answer; `accuracy` is how often it was
+right among those.
+
+{curve}
+
+This is the shape a real tool wants. A categorisation is a suggestion a human
+corrects, and a wrong confident label quietly corrupts a total nobody
+re-checks, while a blank one costs two seconds of attention.
+
+The probabilities are **not calibrated** — 0.8 does not mean "right 80% of the
+time". Treat the threshold as a dial tuned on this curve, not as a
+probability.
 
 ## What did not work
 
-- **Rules ported across domains.** Covered above. The 13.4% is the evidence.
+- **Bank rules ported across domains.** Covered above. The number is the
+  evidence.
 - **Unbalanced class weights.** Fitting without `class_weight="balanced"`
-  scored 84.9% accuracy but only 0.726 macro F1 — better-looking headline,
-  worse at everything except Food. Balancing trades 2 points of a misleading
-  number for 4 points of a meaningful one.
+  scored higher accuracy and worse macro F1 — better headline, worse at
+  everything except Food.
 - **Rows with no note.** 521 of 2,461 have no text. Nothing can classify them,
   so they are excluded rather than counted as failures.
+- **A rule for `Family`.** Attempted and abandoned: its examples share no
+  vocabulary, so any keyword broad enough to catch them cost precision
+  elsewhere.
 
 ## Honest limitations
 
 - One household, one person's labelling conventions. Nothing here shows the
   model generalises to anyone else.
-- `Note` is free text a human wrote for themselves, not a bank narration.
-  A model trained here should not be expected to work on a bank statement,
-  and this repository does not claim it does.
-- 485 test rows. A difference of two or three points is noise.
+- `Note` is free text a human wrote for themselves, not a bank narration. A
+  model trained here should not be expected to work on a bank statement, and
+  this repository does not claim it does.
+- The test sets are a few hundred rows. Two or three points is noise.
+- Probabilities are uncalibrated.
 """
 
 

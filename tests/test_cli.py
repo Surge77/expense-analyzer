@@ -180,3 +180,83 @@ class TestMain:
     def test_section_underlines_the_title_to_its_own_width(self, capsys):
         cli.section("Charts")
         assert capsys.readouterr().out == "\nCharts\n------\n"
+
+
+class TestCategorizerModes:
+    @staticmethod
+    def _household_frame():
+        import pandas as pd
+
+        return pd.DataFrame(
+            {
+                "narration": ["doctor fees", "idli dosa", "bus ticket"],
+                "label": ["Health", "Food", "Transportation"],
+                "amount": [-100.0, -50.0, -20.0],
+            }
+        )
+
+    @staticmethod
+    def _stub_benchmark(monkeypatch):
+        """Avoid the download: the model only needs a frame to fit on."""
+        import pandas as pd
+
+        from expense_analyzer import benchmark as bench_module
+
+        train = pd.DataFrame(
+            {
+                "narration": ["doctor visit", "idli sambar", "bus pass"] * 6,
+                "label": ["Health", "Food", "Transportation"] * 6,
+            }
+        )
+        stub = bench_module.Benchmark(
+            train=train,
+            test=train.copy(),
+            classes=["Food", "Health", "Transportation"],
+            strategy="random",
+            dropped_without_note=0,
+            collapsed_to_other=0,
+        )
+        monkeypatch.setattr(bench_module, "load_benchmark", lambda *a, **k: stub)
+
+    def test_rules_mode_needs_no_model_and_no_download(self):
+        result = cli.apply_categorizer(self._household_frame(), "household", "rules")
+        assert "category" in result.columns
+
+    def test_model_mode_labels_every_row(self, monkeypatch):
+        self._stub_benchmark(monkeypatch)
+
+        result = cli.apply_categorizer(self._household_frame(), "household", "model")
+
+        assert set(result["category"]) <= {"Food", "Health", "Transportation"}
+
+    def test_hybrid_mode_labels_every_row(self, monkeypatch):
+        self._stub_benchmark(monkeypatch)
+
+        result = cli.apply_categorizer(self._household_frame(), "household", "hybrid")
+
+        assert result["category"].notna().all()
+
+    def test_warns_when_the_model_is_used_outside_its_domain(self, monkeypatch, capsys):
+        """The model is trained on handwritten notes. Pointing it at bank
+        narrations is measurably bad, so it must say so rather than quietly
+        producing nonsense."""
+        self._stub_benchmark(monkeypatch)
+
+        cli.apply_categorizer(self._household_frame(), "bank", "model")
+
+        assert "trained on household notes" in capsys.readouterr().out
+
+    def test_does_not_warn_on_the_domain_it_was_trained_for(self, monkeypatch, capsys):
+        self._stub_benchmark(monkeypatch)
+
+        cli.apply_categorizer(self._household_frame(), "household", "hybrid")
+
+        assert "warning" not in capsys.readouterr().out
+
+    def test_does_not_mutate_the_caller_frame(self, monkeypatch):
+        self._stub_benchmark(monkeypatch)
+        frame = self._household_frame()
+
+        cli.apply_categorizer(frame, "household", "model")
+
+        assert "category" not in frame.columns

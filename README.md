@@ -3,7 +3,7 @@
 [![CI](https://github.com/Surge77/expense-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/Surge77/expense-analyzer/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
-[![Coverage 93%](https://img.shields.io/badge/coverage-93%25-brightgreen)](#testing)
+[![Coverage 94%](https://img.shields.io/badge/coverage-94%25-brightgreen)](#testing)
 [![Checked with pyright](https://img.shields.io/badge/types-pyright-blue)](https://github.com/microsoft/pyright)
 
 Turns a bank statement into findings about your spending — then asks whether
@@ -19,27 +19,67 @@ raw export  ->  clean  ->  categorize  ->  aggregate  ->  charts + findings
 
 ## The result
 
-Every approach scored on the same 485 held-out rows of real, human-labelled
-spending. Reproduce with `python scripts/run_benchmark.py`.
+Scored on real, human-labelled spending. Reproduce with
+`python scripts/run_benchmark.py`.
+
+**The headline number depends on a question most write-ups never ask: has the
+model seen this description before?**
+
+| split | notes seen in training | accuracy | macro F1 |
+| --- | ---: | ---: | ---: |
+| `random` | 56.7% | 87.0% | 0.769 |
+| **`grouped`** (never-seen text) | **0%** | **72.1%** | **0.460** |
+| `temporal` (train past, test future) | 58.6% | 87.2% | 0.784 |
+
+Someone tracking expenses writes "grocery" hundreds of times, so a random
+split scatters identical strings across both halves. Splitting the test set by
+whether its note also appears in training:
+
+| test subset | n | accuracy |
+| --- | ---: | ---: |
+| note also appears in training | 275 | 96.4% |
+| genuinely unseen text | 210 | 74.8% |
+
+Both numbers are honest — they answer different questions. Publishing only the
+first would not be.
+
+### Every approach, on genuinely unseen text
 
 | approach | accuracy | macro F1 |
 | --- | ---: | ---: |
-| majority class (always "Food") | 42.9% | 0.050 |
-| keyword rules | 13.4% | 0.035 |
-| **TF-IDF + logistic regression** | **87.0%** | **0.769** |
+| majority class (always "Food") | 43.7% | 0.055 |
+| bank rules, ported out of domain | 13.4% | 0.029 |
+| in-domain keyword rules | 56.9% | **0.502** |
+| TF-IDF + logistic regression | **72.1%** | 0.460 |
+| **hybrid — rules, then model** | **73.9%** | **0.567** |
 
-5-fold cross-validation on the training split: macro F1 0.740 ± 0.034.
+**Hand-written rules beat the model on macro F1 when the text is genuinely
+new.** The model wins on accuracy because accuracy is dominated by the large
+classes it handles well; the rules win on breadth, because a keyword like
+`doctor` keeps working on text nobody has ever seen while the model needs
+vocabulary it recognises. Combining them beats both.
 
-**The rules score below the majority baseline, and that is the interesting
-part.** They match merchant names in bank narrations
-(`UPI-SWIGGY-swiggy@icici-512334`). The benchmark holds one person's private
-shorthand — *fruits and vegetables*, *Shengdane pav kg*, *Mutual fund A*. The
-rules leave **93.2%** of it uncategorised.
+So the recommendation inverts depending on the situation — **rules-then-model
+for novel descriptions, the model alone for your own recurring spending** —
+and that is a measurement rather than a preference.
 
-That measures transfer between two different kinds of text, not whether rules
-work. On bank narrations they are precise and fully explainable. Moved to
-someone's handwriting they collapse. Knowing *which* of those two situations
-you are in is the whole point of measuring first.
+The ported bank rules scoring 13.4% is a third, separate finding: they match
+merchant names (`UPI-SWIGGY-swiggy@icici-512334`) and the benchmark holds
+private shorthand (*fruits and vegetables*, *Shengdane pav kg*), so 93.2% goes
+unmatched. That measures **domain transfer**, not rule quality — which is
+exactly why the in-domain rules exist as a fair baseline.
+
+### It can also decline to answer
+
+| threshold | coverage | accuracy when answered |
+| --- | ---: | ---: |
+| 0.0 | 100% | 87.0% |
+| 0.3 | 82.1% | **94.2%** |
+| 0.5 | 57.3% | 97.8% |
+
+Abstaining on the least confident 18% raises accuracy from 87% to 94%. A
+categorisation is a suggestion a human corrects, and a blank costs two seconds
+where a confident wrong label quietly corrupts a total nobody re-checks.
 
 Full write-up, per-class scores and confusion matrices: **[docs/results.md](docs/results.md)**.
 
@@ -65,6 +105,9 @@ python -m expense_analyzer --evaluate       # rules vs classifier, scored
 python -m expense_analyzer --source household
 python -m expense_analyzer --source bank --account 1196428
 python -m expense_analyzer --statement data/my_statement.csv   # your own
+
+# categorise with the classifier instead of the rules
+python -m expense_analyzer --source household --categorizer hybrid
 ```
 
 ## Data
@@ -119,7 +162,8 @@ src/expense_analyzer/
 ├── categorize.py     Stage 2. Keyword rules, coverage reporting.
 ├── analyze.py        Stage 3. Aggregations only, no plotting.
 ├── plots.py          Stage 4. Four PNGs.
-├── benchmark.py      The labelled split, and the baselines to beat.
+├── benchmark.py      The labelled data and three ways to split it.
+├── baselines.py      Majority, rules, in-domain rules, hybrid.
 ├── evaluate.py       Accuracy, macro F1, confusion matrices.
 ├── model.py          TF-IDF + logistic regression.
 └── cli.py            One command for all of it.
@@ -162,12 +206,12 @@ easily be 40% of the money.
 ## Testing
 
 ```bash
-pytest                  # 119 unit tests, offline, ~6s
-pytest -m integration   # 12 tests against the real datasets, ~30s
+pytest                  # 158 unit tests, offline, ~15s
+pytest -m integration   # 18 tests against the real datasets, ~3m
 ruff check . && pyright # lint and types
 ```
 
-Coverage is 93% and gated at 90% in CI. Warnings are errors — a
+Coverage is 94% and gated at 90% in CI. Warnings are errors — a
 DeprecationWarning is how a silent behaviour change announces itself one
 release before it breaks something.
 
@@ -180,7 +224,10 @@ release before it breaks something.
 - **The model is one household.** 1,940 rows, one person's labelling
   conventions. Nothing here shows it generalises to anyone else, and it is
   trained on human notes rather than bank narrations — so it should not be
-  expected to work on a raw statement.
+  expected to work on a raw statement. `--categorizer model` warns when
+  pointed outside its domain.
+- **Probabilities are uncalibrated.** A confidence of 0.8 does not mean
+  "right 80% of the time"; the threshold is a dial tuned on the curve above.
 - **`Family` is never predicted.** 23 examples with no distinctive vocabulary.
   Some classes simply are not learnable at this scale.
 - **Rules are brittle by design.** A merchant renaming itself breaks a rule

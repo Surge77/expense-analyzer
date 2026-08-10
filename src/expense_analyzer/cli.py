@@ -40,6 +40,16 @@ def parse_args() -> argparse.Namespace:
         help="Describe each available source and exit.",
     )
     parser.add_argument(
+        "--categorizer",
+        choices=("rules", "model", "hybrid"),
+        default="rules",
+        help=(
+            "How to assign categories. 'rules' is keyword matching and needs no "
+            "training. 'model' and 'hybrid' train on the labelled household data, "
+            "so they are only sound for --source household."
+        ),
+    )
+    parser.add_argument(
         "--evaluate",
         action="store_true",
         help="Score the rules and the classifier on the labelled benchmark, then exit.",
@@ -106,7 +116,46 @@ def load_frame(args: argparse.Namespace) -> pd.DataFrame:
             f"Available:   {', '.join(present)}"
         )
 
-    return categorize.add_categories(frame)
+    return apply_categorizer(frame, args.source, args.categorizer)
+
+
+def apply_categorizer(frame: pd.DataFrame, source: str, choice: str) -> pd.DataFrame:
+    """Attach a `category` column using the requested approach.
+
+    The model is trained on one household's handwritten notes. Applying it to
+    bank narrations is out of domain and measurably bad — the reverse
+    direction scores 13.4% — so it warns rather than pretending otherwise.
+    """
+    if choice == "rules":
+        return categorize.add_categories(frame)
+
+    if source != "household":
+        print(
+            f"warning: --categorizer {choice} is trained on household notes, "
+            f"but --source is {source!r}.\n"
+            "         Those are different kinds of text and the result will be "
+            "poor. See docs/results.md.\n"
+        )
+
+    from . import baselines, benchmark
+
+    bench = benchmark.load_benchmark()
+    predicted = (
+        baselines.predict_hybrid(bench.train, frame)
+        if choice == "hybrid"
+        else _model_predictions(bench.train, frame)
+    )
+
+    frame = frame.copy()
+    frame["category"] = predicted
+    return frame
+
+
+def _model_predictions(train: pd.DataFrame, frame: pd.DataFrame) -> pd.Series:
+    from .model import predict
+    from .model import train as fit
+
+    return predict(fit(train), frame)
 
 
 def run_evaluation() -> None:
@@ -115,13 +164,13 @@ def run_evaluation() -> None:
     Imported lazily: this is the only path that needs scikit-learn, and
     someone running the ordinary pipeline should not pay for it.
     """
-    from . import benchmark, evaluate
+    from . import baselines, benchmark, evaluate
 
     bench = benchmark.load_benchmark()
     section("Benchmark")
     print(bench.summary())
 
-    scores, model_predictions = benchmark.compare_all(bench)
+    scores, model_predictions = baselines.compare_all(bench)
     section("How well does each approach do")
     print(evaluate.comparison_table(scores))
 
