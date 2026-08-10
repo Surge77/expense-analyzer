@@ -1,0 +1,39 @@
+# Real bank statements never leave this machine.
+# A statement holds your account number, balance and full transaction
+# history. Once pushed, git history keeps it even after you delete the file.
+data/*
+!data/.gitkeep
+!data/sample_statement.csv
+
+# Secrets
+.env
+.env.*
+.kaggle/
+kaggle.json
+access_token
+
+# Generated output
+reports/*.png
+models/*.joblib
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+.coverage
+coverage.xml
+htmlcov/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.stackdump
