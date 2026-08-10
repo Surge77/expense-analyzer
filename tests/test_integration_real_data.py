@@ -91,3 +91,63 @@ class TestRealHouseholdExport:
         _, tidy = household
 
         assert (tidy["narration"] == "").sum() == pytest.approx(521, abs=5)
+
+
+class TestBenchmarkAndModel:
+    """The numbers quoted in docs/results.md and the README.
+
+    Pinned loosely — a few points either way is noise on 485 test rows — but
+    tight enough that a real regression in the pipeline shows up here.
+    """
+
+    @staticmethod
+    def _bench():
+        from expense_analyzer import benchmark
+
+        return benchmark.load_benchmark()
+
+    def test_benchmark_shape_matches_what_the_docs_claim(self):
+        bench = self._bench()
+
+        assert bench.total == 1_940
+        assert bench.dropped_without_note == 521
+        assert len(bench.classes) == 12
+        assert len(bench.test) == 485
+
+    def test_rules_score_below_the_majority_baseline(self):
+        """The headline finding: rules built for bank narrations do not
+        transfer to a human's shorthand."""
+        from expense_analyzer import benchmark, evaluate
+
+        bench = self._bench()
+        truth = bench.test["label"]
+        majority_guess = benchmark.predict_majority(bench.train, bench.test)
+        majority = evaluate.score("majority", truth, majority_guess)
+        rules = evaluate.score("rules", truth, benchmark.predict_rules(bench.test))
+
+        assert majority.accuracy == pytest.approx(0.429, abs=0.02)
+        assert rules.accuracy < majority.accuracy
+        assert rules.accuracy == pytest.approx(0.134, abs=0.03)
+
+    def test_classifier_clearly_beats_both_baselines(self):
+        from expense_analyzer import benchmark
+
+        bench = self._bench()
+        scores, _ = benchmark.compare_all(bench)
+        by_name = {item.name: item for item in scores}
+
+        model_score = by_name["TF-IDF + LogReg"]
+        assert model_score.accuracy > 0.80
+        assert model_score.macro_f1 > 0.70
+        assert model_score.accuracy > by_name["majority class"].accuracy
+        assert model_score.macro_f1 > by_name["keyword rules"].macro_f1
+
+    def test_model_leans_on_words_a_human_would_expect(self):
+        """A model relying on something absurd has memorised a quirk."""
+        from expense_analyzer import model
+
+        bench = self._bench()
+        pipeline = model.train(bench.train)
+        words = " ".join(model.top_features_for(pipeline, "Transportation", top=60)["feature"])
+
+        assert any(term in words for term in ("bus", "train", "petrol", "rickshaw", "place"))
