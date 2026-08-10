@@ -62,7 +62,12 @@ where = ["src"]
 # No pythonpath hack: the package is installed with `pip install -e .`, so
 # tests import it exactly the way a user would.
 testpaths = ["tests"]
-addopts = "-q"
+# Integration tests download real datasets, so they are opt-in: `pytest`
+# stays fast and works offline, `pytest -m integration` runs the real thing.
+addopts = "-q -m 'not integration'"
+markers = [
+    "integration: downloads and parses the real public datasets (needs network)",
+]
 
 [tool.coverage.run]
 branch = true

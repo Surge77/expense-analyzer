@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from expense_analyzer.clean import clean_statement, parse_amount, parse_dates
+from expense_analyzer.clean import clean_statement, load_and_clean, parse_amount, parse_dates
 
 
 @pytest.fixture
@@ -37,6 +37,20 @@ def test_reads_dates_day_first_not_month_first(raw_statement):
     cleaned = clean_statement(raw_statement)
     first = cleaned["date"].iloc[0]
     assert (first.day, first.month) == (5, 7), "05/07 must be 5 July, not 7 May"
+
+
+def test_load_and_clean_reads_a_file_and_tidies_it_in_one_call(tmp_path):
+    path = tmp_path / "statement.csv"
+    path.write_text(
+        "Date,Narration,Withdrawal Amt.,Deposit Amt.\n05/07/26,UPI-SWIGGY-1,347.00,\n",
+        encoding="utf-8",
+    )
+
+    tidy = load_and_clean(path)
+
+    assert len(tidy) == 1
+    assert tidy["amount"].iloc[0] == -347.00
+    assert tidy["day_name"].iloc[0] == "Sunday"
 
 
 def test_falls_back_to_the_general_parser_for_formats_not_in_the_list():
