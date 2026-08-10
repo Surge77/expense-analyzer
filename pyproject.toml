@@ -70,7 +70,16 @@ markers = [
 ]
 # Warnings are failures. A DeprecationWarning from pandas is how a silent
 # behaviour change announces itself a release before it breaks something.
-filterwarnings = ["error"]
+#
+# Exceptions are listed individually and named to a module, never blanket
+# disabled: an ignore that is too broad silences the next real warning too.
+filterwarnings = [
+    "error",
+    # joblib assigns to `array.shape` while unpickling, which NumPy 2.5
+    # deprecated. Nothing here can fix it, and it fires only on model load.
+    # Remove once joblib ships a release using np.reshape.
+    "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning",
+]
 
 [tool.coverage.run]
 branch = true
