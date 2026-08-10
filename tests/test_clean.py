@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from expense_analyzer.clean import clean_statement, parse_amount
+from expense_analyzer.clean import clean_statement, parse_amount, parse_dates
 
 
 @pytest.fixture
@@ -37,6 +37,21 @@ def test_reads_dates_day_first_not_month_first(raw_statement):
     cleaned = clean_statement(raw_statement)
     first = cleaned["date"].iloc[0]
     assert (first.day, first.month) == (5, 7), "05/07 must be 5 July, not 7 May"
+
+
+def test_falls_back_to_the_general_parser_for_formats_not_in_the_list():
+    """The 116k-row real bank export stores dates as `2017-06-29 00:00:00`,
+    which none of DATE_FORMATS matches because of the time component. Every
+    explicit format scores zero, so the mixed parser must win."""
+    parsed = parse_dates(pd.Series(["2017-06-29 00:00:00", "2017-07-05 00:00:00"]))
+
+    assert not parsed.isna().any()
+    assert (parsed.iloc[0].year, parsed.iloc[0].month, parsed.iloc[0].day) == (2017, 6, 29)
+
+
+def test_unparseable_dates_become_nat_rather_than_raising():
+    parsed = parse_dates(pd.Series(["not a date", "31/02/26"]))
+    assert parsed.isna().all()
 
 
 def test_drops_footer_rows_without_a_date(raw_statement):

@@ -38,6 +38,9 @@ dev = [
     "pytest-cov==6.0.0",
     "ruff==0.16.2",
     "pyright==1.1.411",
+    # Not optional. See the [tool.pyright] note: without these stubs pyright
+    # reports 33 phantom errors on ordinary pandas indexing.
+    "pandas-stubs==3.0.5.260730",
 ]
 notebook = [
     "jupyterlab==4.2.5",
@@ -64,7 +67,14 @@ addopts = "-q"
 [tool.coverage.run]
 branch = true
 source = ["expense_analyzer"]
-omit = ["*/__pycache__/*", "*/tests/*"]
+omit = [
+    "*/__pycache__/*",
+    "*/tests/*",
+    # A three-line shim delegating to cli.main(). Covering it would mean
+    # spawning a subprocess to prove `from .cli import main` works; the CI
+    # smoke job already runs `python -m expense_analyzer` for real.
+    "*/__main__.py",
+]
 
 [tool.coverage.report]
 show_missing = true
@@ -105,9 +115,13 @@ select = [
 known-first-party = ["src", "expense_analyzer"]
 
 [tool.pyright]
-include = ["src", "tests", "scripts", "run.py"]
+include = ["src", "tests", "scripts"]
 pythonVersion = "3.11"
-# "basic" not "strict": pandas' stubs are loose enough that strict mode
-# produces mostly false positives on DataFrame operations.
+# "basic" not "strict". Strict demands an explicit annotation on every local,
+# which buries the pipeline logic this repo exists to show.
+#
+# The `pandas-stubs` dev dependency does the real work here: without it
+# pyright reports 33 errors on this codebase, nearly all of them phantom
+# `ndarray` inferences on ordinary DataFrame indexing. With it, zero.
 typeCheckingMode = "basic"
 reportMissingImports = true
