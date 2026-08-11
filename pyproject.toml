@@ -34,8 +34,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest==9.0.3",
-    "pytest-cov==6.0.0",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
     "ruff==0.16.2",
     "pyright==1.1.411",
     # Not optional. See the [tool.pyright] note: without these stubs pyright
@@ -85,10 +85,6 @@ filterwarnings = [
     # deprecated. Nothing here can fix it, and it fires only on model load.
     # Remove once joblib ships a release using np.reshape.
     "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning",
-    # pytest-cov signals a coverage shortfall with a warning. Promoting it
-    # to an error turns a clean "coverage too low" message into a pytest
-    # INTERNALERROR that hides the actual number.
-    "ignore::pytest_cov.plugin.CovFailUnderWarning",
 ]
 
 [tool.coverage.run]
