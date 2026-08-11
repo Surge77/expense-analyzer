@@ -25,7 +25,7 @@ classifiers = [
 # now is not evidence of anything.
 dependencies = [
     "pandas==3.0.5",
-    "matplotlib==3.10.8",
+    "matplotlib==3.11.1",
     "scikit-learn==1.9.0",
     "joblib==1.5.3",
     "kagglehub==1.0.2",
