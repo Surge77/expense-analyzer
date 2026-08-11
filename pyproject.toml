@@ -24,7 +24,7 @@ classifiers = [
 # Pinned exactly. A portfolio repo that cannot be reproduced two years from
 # now is not evidence of anything.
 dependencies = [
-    "pandas==2.2.3",
+    "pandas==3.0.5",
     "matplotlib==3.10.8",
     "scikit-learn==1.9.0",
     "joblib==1.5.3",
