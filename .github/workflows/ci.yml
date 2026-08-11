@@ -69,7 +69,7 @@ jobs:
       # Cache the downloads so a Kaggle outage does not turn every build red,
       # and so repeated runs do not re-fetch 6 MB for no reason.
       - name: Cache datasets
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/kagglehub
           key: kagglehub-${{ hashFiles('src/expense_analyzer/data/loaders.py') }}
