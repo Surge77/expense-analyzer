@@ -44,7 +44,7 @@ dev = [
     "hypothesis==6.165.2",
 ]
 notebook = [
-    "jupyterlab==4.6.2",
+    "jupyterlab==4.6.3",
     "seaborn==0.13.2",
 ]
 
