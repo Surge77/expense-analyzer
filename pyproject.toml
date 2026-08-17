@@ -41,7 +41,7 @@ dev = [
     # Not optional. See the [tool.pyright] note: without these stubs pyright
     # reports 33 phantom errors on ordinary pandas indexing.
     "pandas-stubs==3.0.5.260730",
-    "hypothesis==6.165.2",
+    "hypothesis==6.165.7",
 ]
 notebook = [
     "jupyterlab==4.6.2",
